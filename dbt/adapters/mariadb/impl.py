@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any, Iterable, Tuple
 import agate
 
 import dbt
-import dbt.exceptions
+import dbt_common.exceptions
 
 from dbt.adapters.base.impl import catch_as_completed
 from dbt.adapters.sql import SQLAdapter
@@ -15,9 +15,8 @@ from dbt.adapters.base import BaseRelation
 from dbt.contracts.graph.nodes import ConstraintType
 from dbt.adapters.base.impl import ConstraintSupport
 from dbt.contracts.graph.manifest import Manifest
-from dbt.clients.agate_helper import DEFAULT_TYPE_TESTER
-from dbt.events import AdapterLogger
-from dbt.utils import executor
+from dbt.adapters.events.logging import AdapterLogger
+from dbt_common.utils import executor
 
 logger = AdapterLogger("mysql")
 
@@ -61,7 +60,7 @@ class MariaDBAdapter(SQLAdapter):
         kwargs = {"schema_relation": schema_relation}
         try:
             results = self.execute_macro(LIST_RELATIONS_MACRO_NAME, kwargs=kwargs)
-        except dbt.exceptions.DbtRuntimeError as e:
+        except dbt_common.exceptions.DbtRuntimeError as e:
             errmsg = getattr(e, "msg", "")
             if f"MariaDB database '{schema_relation}' not found" in errmsg:
                 return []
@@ -73,7 +72,7 @@ class MariaDBAdapter(SQLAdapter):
         relations = []
         for row in results:
             if len(row) != 4:
-                raise dbt.exceptions.DbtRuntimeError(
+                raise dbt_common.exceptions.DbtRuntimeError(
                     "Invalid value from "
                     f'"mariadb__list_relations_without_caching({kwargs})", '
                     f"got {len(row)} values, expected 4"
@@ -129,7 +128,7 @@ class MariaDBAdapter(SQLAdapter):
         schema_map = self._get_catalog_schemas(manifest)
 
         if len(schema_map) > 1:
-            raise dbt.exceptions.CompilationError(
+            raise dbt_common.exceptions.CompilationError(
                 f"Expected only one database in get_catalog, found " f"{list(schema_map)}"
             )
 
@@ -157,7 +156,7 @@ class MariaDBAdapter(SQLAdapter):
         manifest,
     ) -> agate.Table:
         if len(schemas) != 1:
-            raise dbt.exceptions.CompilationError(
+            raise dbt_common.exceptions.CompilationError(
                 f"Expected only one schema in mariadb _get_one_catalog, found " f"{schemas}"
             )
 
@@ -168,7 +167,7 @@ class MariaDBAdapter(SQLAdapter):
         for relation in self.list_relations(database, schema):
             logger.debug("Getting table schema for relation {}", str(relation))
             columns.extend(self._get_columns_for_catalog(relation))  # type: ignore[arg-type]
-        return agate.Table.from_object(columns, column_types=DEFAULT_TYPE_TESTER)
+        return agate.Table.from_object(columns)
 
     def check_schema_exists(self, database, schema):
         results = self.execute_macro(LIST_SCHEMAS_MACRO_NAME, kwargs={"database": database})
@@ -207,7 +206,7 @@ class MariaDBAdapter(SQLAdapter):
         elif location == "prepend":
             return f"concat({value}, '{add_to}')"
         else:
-            raise dbt.exceptions.DbtRuntimeError(
+            raise dbt_common.exceptions.DbtRuntimeError(
                 f'Got an unexpected location value of "{location}"'
             )
 
