@@ -39,7 +39,9 @@ class MariaDBAdapter(SQLAdapter):
         #
         # It is possible to use a `post-hook` to add a foreign key after the
         # table is created.
-        ConstraintType.foreign_key: ConstraintSupport.NOT_SUPPORTED,
+        # ConstraintType.foreign_key: ConstraintSupport.NOT_SUPPORTED,
+        # it works in 10.5 and up
+        ConstraintType.foreign_key: ConstraintSupport.ENFORCED,
     }
 
     @classmethod
