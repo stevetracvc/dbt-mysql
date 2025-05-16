@@ -1,6 +1,6 @@
 from concurrent.futures import Future
 from dataclasses import asdict
-from typing import Optional, List, Dict, Any, Iterable, Tuple
+from typing import Optional, List, Dict, Any, Iterable, Tuple, FrozenSet
 import agate
 
 import dbt
@@ -17,6 +17,8 @@ from dbt.adapters.base.impl import ConstraintSupport
 from dbt.contracts.graph.manifest import Manifest
 from dbt.adapters.events.logging import AdapterLogger
 from dbt_common.utils import executor
+from dbt.adapters.contracts.relation import RelationConfig
+from dbt_common.contracts.constraints import ColumnLevelConstraint
 
 logger = AdapterLogger("mysql")
 
@@ -85,6 +87,36 @@ class MariaDBAdapter(SQLAdapter):
 
         return relations
 
+    @classmethod
+    def render_column_constraint(cls, constraint: ColumnLevelConstraint) -> Optional[str]:
+        """Render the given constraint as DDL text. Should be overriden by adapters which need custom constraint
+        rendering."""
+        constraint_expression = constraint.expression or ""
+
+        rendered_column_constraint = None
+        if constraint.type == ConstraintType.check and constraint_expression:
+            rendered_column_constraint = f"check ({constraint_expression})"
+        elif constraint.type == ConstraintType.not_null:
+            rendered_column_constraint = f"not null {constraint_expression}"
+        elif constraint.type == ConstraintType.unique:
+            rendered_column_constraint = f"unique {constraint_expression}"
+        elif constraint.type == ConstraintType.primary_key:
+            rendered_column_constraint = f"primary key {constraint_expression}"
+        elif constraint.type == ConstraintType.foreign_key:
+            if constraint.to and constraint.to_columns:
+                rendered_column_constraint = (
+                    f"references {constraint.to} ({', '.join(constraint.to_columns)}) {constraint_expression}"
+                )
+            elif constraint_expression:
+                rendered_column_constraint = f"references {constraint_expression}"
+        elif constraint.type == ConstraintType.custom and constraint_expression:
+            rendered_column_constraint = constraint_expression
+
+        if rendered_column_constraint:
+            rendered_column_constraint = rendered_column_constraint.strip()
+
+        return rendered_column_constraint
+
     def get_columns_in_relation(self, relation: MariaDBRelation) -> List[MariaDBColumn]:
         rows: List[agate.Row] = super().get_columns_in_relation(relation)
         return self.parse_show_columns(relation, rows)
@@ -126,8 +158,12 @@ class MariaDBAdapter(SQLAdapter):
             for idx, column in enumerate(raw_rows)
         ]
 
-    def get_catalog(self, manifest: Manifest) -> Tuple[agate.Table, List[Exception]]:
-        schema_map = self._get_catalog_schemas(manifest)
+    def get_catalog(
+        self,
+        relation_configs: Iterable[RelationConfig],
+        used_schemas: FrozenSet[Tuple[str, str]],
+    ) -> Tuple["agate.Table", List[Exception]]:
+        schema_map = self._get_catalog_schemas(relation_configs)
 
         if len(schema_map) > 1:
             raise dbt_common.exceptions.CompilationError(
@@ -145,7 +181,7 @@ class MariaDBAdapter(SQLAdapter):
                             self._get_one_catalog,
                             info,
                             [schema],
-                            manifest,
+                            used_schemas,
                         )
                     )
             catalogs, exceptions = catch_as_completed(futures)
