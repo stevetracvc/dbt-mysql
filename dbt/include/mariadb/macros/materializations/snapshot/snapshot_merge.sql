@@ -1,10 +1,11 @@
 
 {% macro mariadb__snapshot_merge_sql_update(target, source, insert_cols) -%}
-    update {{ target }}, (select dbt_scd_id, dbt_change_type, dbt_valid_to from {{ source }}) as DBT_INTERNAL_SOURCE
-    set {{ target }}.dbt_valid_to = DBT_INTERNAL_SOURCE.dbt_valid_to
-    where DBT_INTERNAL_SOURCE.dbt_scd_id = {{ target }}.dbt_scd_id
-    and DBT_INTERNAL_SOURCE.dbt_change_type = 'update'
-    and {{ target }}.dbt_valid_to is null
+    {%- set columns = config.get("snapshot_table_column_names") or get_snapshot_table_column_names() -%}
+    update {{ target }}, (select {{ columns.dbt_scd_id }}, dbt_change_type, {{ columns.dbt_valid_to }} from {{ source }}) as DBT_INTERNAL_SOURCE
+    set {{ target }}.{{ columns.dbt_valid_to }} = DBT_INTERNAL_SOURCE.{{ columns.dbt_valid_to }}
+    where DBT_INTERNAL_SOURCE.{{ columns.dbt_scd_id }} = {{ target }}.{{ columns.dbt_scd_id }}
+    and DBT_INTERNAL_SOURCE.dbt_change_type IN ('update', 'delete')
+    and {{ target }}.{{ columns.dbt_valid_to }} is null
 {% endmacro %}
 
 {% macro mariadb__snapshot_merge_sql_insert(target, source, insert_cols) -%}
