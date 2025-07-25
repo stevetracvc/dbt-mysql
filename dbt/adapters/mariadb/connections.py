@@ -3,12 +3,13 @@ from contextlib import contextmanager
 import mysql.connector
 import mysql.connector.constants
 
-import dbt_common.exceptions
+import dbt.exceptions
 from dbt.adapters.sql import SQLConnectionManager
 from dbt.adapters.contracts.connection import AdapterResponse
 from dbt.adapters.contracts.connection import Connection
 from dbt.adapters.contracts.connection import Credentials
 from dbt.adapters.events.logging import AdapterLogger
+from dbt.adapters.exceptions.connection import FailedToConnectError
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -43,7 +44,7 @@ class MariaDBCredentials(Credentials):
     def __post_init__(self):
         # Database and schema are treated as the same thing
         if self.database is not None and self.database != self.schema:
-            raise dbt_common.exceptions.DbtRuntimeError(
+            raise dbt.exceptions.DbtRuntimeError(
                 f"    schema: {self.schema} \n"
                 f"    database: {self.database} \n"
                 f"On MariaDB, database must be omitted"
@@ -128,7 +129,7 @@ class MariaDBConnectionManager(SQLConnectionManager):
                 connection.handle = None
                 connection.state = "fail"
 
-                raise dbt_common.exceptions.FailedToConnectError(str(e))
+                raise FailedToConnectError(str(e))
 
         return connection
 
@@ -153,19 +154,19 @@ class MariaDBConnectionManager(SQLConnectionManager):
                 logger.debug("Failed to release connection!")
                 pass
 
-            raise dbt_common.exceptions.DbtDatabaseError(str(e).strip()) from e
+            raise dbt.exceptions.DbtDatabaseError(str(e).strip()) from e
 
         except Exception as e:
             logger.debug("Error running SQL: {}", sql)
             logger.debug("Rolling back transaction.")
             self.rollback_if_open()
-            if isinstance(e, dbt_common.exceptions.DbtRuntimeError):
+            if isinstance(e, dbt.exceptions.DbtRuntimeError):
                 # during a sql query, an internal to dbt exception was raised.
                 # this sounds a lot like a signal handler and probably has
                 # useful information, so raise it without modification.
                 raise
 
-            raise dbt_common.exceptions.DbtRuntimeError(e) from e
+            raise dbt.exceptions.DbtRuntimeError(e) from e
 
     @classmethod
     def get_response(cls, cursor) -> AdapterResponse:
