@@ -10,6 +10,7 @@ from dbt.adapters.contracts.connection import Connection
 from dbt.adapters.contracts.connection import Credentials
 from dbt.adapters.events.logging import AdapterLogger
 from dbt.adapters.exceptions.connection import FailedToConnectError
+from dbt_common.exceptions import DbtDatabaseError
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -154,7 +155,7 @@ class MariaDBConnectionManager(SQLConnectionManager):
                 logger.debug("Failed to release connection!")
                 pass
 
-            raise dbt.exceptions.DbtDatabaseError(str(e).strip()) from e
+            raise DbtDatabaseError(str(e).strip()) from e
 
         except Exception as e:
             logger.debug("Error running SQL: {}", sql)
